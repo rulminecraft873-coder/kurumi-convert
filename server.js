@@ -17,7 +17,7 @@ const DB_PATH = path.join(STORAGE_DIR, 'claims.json')
 const TMP_DIR = path.join(STORAGE_DIR, 'tmp')
 const CODE_TTL_MS = 30 * 60 * 1000
 const MAX_UPLOAD_MB = 250
-const COBALT_API_URL = process.env.COBALT_API_URL || 'https://cobalt-production-b426.up.railway.app'
+const COBALT_API_URL = process.env.COBALT_API_URL || 'https://cobalt-production-66d6.up.railway.app'
 const MAX_STORAGE_MB = 800
 
 for (const dir of [STORAGE_DIR, TMP_DIR]) {
