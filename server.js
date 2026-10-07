@@ -17,7 +17,6 @@ const DB_PATH = path.join(STORAGE_DIR, 'claims.json')
 const TMP_DIR = path.join(STORAGE_DIR, 'tmp')
 const CODE_TTL_MS = 30 * 60 * 1000
 const MAX_UPLOAD_MB = 250
-const COBALT_API_URL = process.env.COBALT_API_URL || 'https://cobalt-production-66d6.up.railway.app'
 const MAX_STORAGE_MB = 800
 
 for (const dir of [STORAGE_DIR, TMP_DIR]) {
@@ -108,7 +107,7 @@ function autoCleanupStorage() {
   writeDb(db)
 }
 
-// ====== FFMPEG ======
+// ====== FFMPEG (ULTRAFAST) ======
 async function getVideoDuration(filePath) {
   try {
     const { stdout } = await execFileAsync('ffprobe', [
@@ -124,17 +123,16 @@ async function getVideoDuration(filePath) {
   }
 }
 
-// Mode status: 1080p, 60fps, kualitas maksimal buat status WA (max 60 detik)
 async function reencodeStatus(inputPath, outputPath) {
   await execFileAsync('ffmpeg', [
     '-i', inputPath,
     '-t', '60',
-    '-threads', '2',
+    '-threads', '4',
     '-vf', "scale='min(1080,iw)':-2",
     '-r', '60',
     '-c:v', 'libx264',
-    '-crf', '20',
-    '-preset', 'veryfast',
+    '-crf', '23',
+    '-preset', 'ultrafast',
     '-sn',
     '-profile:v', 'high',
     '-level', '4.2',
@@ -149,15 +147,14 @@ async function reencodeStatus(inputPath, outputPath) {
   ], { timeout: 240000, maxBuffer: 1024 * 1024 * 10 })
 }
 
-// Mode compress: 1080p tapi bitrate lebih rendah biar ukuran lebih kecil, tanpa potong durasi
 async function reencodeCompress(inputPath, outputPath) {
   await execFileAsync('ffmpeg', [
     '-i', inputPath,
-    '-threads', '2',
+    '-threads', '4',
     '-vf', "scale='min(1080,iw)':-2",
     '-c:v', 'libx264',
     '-crf', '28',
-    '-preset', 'veryfast',
+    '-preset', 'ultrafast',
     '-pix_fmt', 'yuv420p',
     '-c:a', 'aac',
     '-b:a', '128k',
@@ -181,21 +178,22 @@ async function reencodeVideo(inputPath, outputPath, mode = 'status') {
   }
 }
 
-// Resolve link TikTok/IG/dll lewat instance cobalt
-async function resolveWithCobalt(sourceUrl) {
-  const res = await fetch(COBALT_API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-    body: JSON.stringify({ url: sourceUrl })
-  })
+// ====== RESOLVE LINK VIA REST API ZELAPI ======
+async function resolveWithZelapi(sourceUrl) {
+  const apiKey = 'zelapi-36hfqgq'
+  const apiEndpoint = `https://zelapi.eu.cc/download/all?url=${encodeURIComponent(sourceUrl)}&apikey=${apiKey}`
+  
+  const res = await fetch(apiEndpoint)
   const data = await res.json()
 
-  if (!res.ok || data.status === 'error') {
-    throw new Error(data?.error?.code || data?.text || 'Gagal resolve link.')
+  // Ganti data.success jadi data.status sesuai format JSON Zelapi
+  if (!res.ok || data.status !== true) {
+    throw new Error('Gagal resolve link via REST API Zelapi.')
   }
 
-  const directUrl = data.url || data?.picker?.[0]?.url
-  if (!directUrl) throw new Error('Link tidak bisa diproses (format tidak didukung).')
+  // Ambil URL dari array download_links indeks pertama
+  const directUrl = data.result?.download_links?.[0] || data.result?.url || data.url
+  if (!directUrl) throw new Error('Link video HD tidak ditemukan dalam respons API.')
 
   return directUrl
 }
@@ -286,7 +284,7 @@ app.post('/api/from-url', async (req, res) => {
   try {
     await execFileAsync('ffmpeg', ['-version'], { timeout: 5000 })
 
-    const directUrl = await resolveWithCobalt(sourceUrl)
+    const directUrl = await resolveWithZelapi(sourceUrl)
     await downloadToFile(directUrl, inPath)
 
     if (!fs.existsSync(inPath) || fs.statSync(inPath).size < 1000) {
